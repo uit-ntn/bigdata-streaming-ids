@@ -22,21 +22,24 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 RAW_DIR = BASE_DIR / "data" / "raw"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 MODEL_DIR = BASE_DIR / "models"
-REPORT_DIR = BASE_DIR / "reports" / "results"
-FIGURE_DIR = BASE_DIR / "reports" / "figures"
+
+REPORT_DIR = BASE_DIR / "reports"
+FIGURE_DIR = REPORT_DIR / "figures" / "preprocessing"
+RESULT_DIR = REPORT_DIR / "results" / "preprocessing"
 
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
-REPORT_DIR.mkdir(parents=True, exist_ok=True)
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
 TRAIN_PATH = RAW_DIR / "UNSW_NB15_training-set.csv"
 TEST_PATH = RAW_DIR / "UNSW_NB15_testing-set.csv"
 
 TARGET_COL = "label"
 
-# id: mã định danh dòng dữ liệu, không có ý nghĩa dự đoán
-# attack_cat: loại tấn công cụ thể, không dùng khi train binary label
+# id: mã định danh dòng dữ liệu, không có ý nghĩa dự đoán.
+# attack_cat: loại tấn công cụ thể, không dùng khi train binary Normal/Attack
+# để tránh rò rỉ nhãn.
 DROP_COLS = ["id", "attack_cat"]
 
 
@@ -45,9 +48,9 @@ DROP_COLS = ["id", "attack_cat"]
 # ============================================================
 
 def print_section(title: str):
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 90)
     print(title)
-    print("=" * 80)
+    print("=" * 90)
 
 
 def save_json(data, path: Path):
@@ -55,10 +58,19 @@ def save_json(data, path: Path):
         json.dump(data, f, ensure_ascii=False, indent=4, default=str)
 
 
+def save_figure(filename: str):
+    plt.tight_layout()
+    save_path = FIGURE_DIR / filename
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"[OK] Saved figure: {save_path}")
+
+
 def create_one_hot_encoder():
     """
-    Tương thích nhiều phiên bản scikit-learn.
-    Bản mới dùng sparse_output, bản cũ dùng sparse.
+    Tạo OneHotEncoder tương thích nhiều phiên bản scikit-learn.
+    scikit-learn mới dùng sparse_output.
+    scikit-learn cũ dùng sparse.
     """
     try:
         return OneHotEncoder(handle_unknown="ignore", sparse_output=True)
@@ -66,11 +78,29 @@ def create_one_hot_encoder():
         return OneHotEncoder(handle_unknown="ignore", sparse=True)
 
 
-def save_figure(filename: str):
-    plt.tight_layout()
-    plt.savefig(FIGURE_DIR / filename)
-    plt.close()
-    print(f"[OK] Saved figure: {FIGURE_DIR / filename}")
+def get_dense_column(matrix, col_index: int):
+    """
+    Lấy một cột từ sparse/dense matrix và chuyển thành numpy array 1 chiều.
+    """
+    col_values = matrix[:, col_index]
+
+    if sparse.issparse(matrix):
+        return col_values.toarray().ravel()
+
+    return np.asarray(col_values).ravel()
+
+
+def sample_array(values, max_sample=5000, random_state=42):
+    """
+    Lấy mẫu để vẽ các biểu đồ như violin/ECDF nhanh hơn.
+    """
+    values = np.asarray(values)
+
+    if len(values) <= max_sample:
+        return values
+
+    rng = np.random.default_rng(random_state)
+    return rng.choice(values, size=max_sample, replace=False)
 
 
 # ============================================================
@@ -99,7 +129,7 @@ def load_data():
 # 4. VALIDATE DATA
 # ============================================================
 
-def validate_data(train_df, test_df):
+def validate_data(train_df: pd.DataFrame, test_df: pd.DataFrame):
     print_section("2. VALIDATE DATA")
 
     if TARGET_COL not in train_df.columns:
@@ -111,8 +141,8 @@ def validate_data(train_df, test_df):
     train_cols = set(train_df.columns)
     test_cols = set(test_df.columns)
 
-    missing_in_test = train_cols - test_cols
-    missing_in_train = test_cols - train_cols
+    missing_in_test = sorted(list(train_cols - test_cols))
+    missing_in_train = sorted(list(test_cols - train_cols))
 
     if missing_in_test:
         print(f"[WARNING] Columns in train but not in test: {missing_in_test}")
@@ -120,11 +150,14 @@ def validate_data(train_df, test_df):
     if missing_in_train:
         print(f"[WARNING] Columns in test but not in train: {missing_in_train}")
 
-    print("\nTarget distribution in train:")
-    print(train_df[TARGET_COL].value_counts())
+    train_label_counts = train_df[TARGET_COL].value_counts().sort_index()
+    test_label_counts = test_df[TARGET_COL].value_counts().sort_index()
 
-    print("\nTarget distribution in test:")
-    print(test_df[TARGET_COL].value_counts())
+    print("\nTrain label distribution:")
+    print(train_label_counts)
+
+    print("\nTest label distribution:")
+    print(test_label_counts)
 
     label_summary = pd.DataFrame({
         "dataset": ["train", "train", "test", "test"],
@@ -142,10 +175,24 @@ def validate_data(train_df, test_df):
         lambda row: row["count"] / len(train_df) * 100
         if row["dataset"] == "train"
         else row["count"] / len(test_df) * 100,
-        axis=1
+        axis=1,
     )
 
-    label_summary.to_csv(REPORT_DIR / "preprocessing_label_summary.csv", index=False)
+    label_summary.to_csv(RESULT_DIR / "label_summary_before_preprocessing.csv", index=False)
+
+    validation_summary = {
+        "target_col": TARGET_COL,
+        "train_shape": train_df.shape,
+        "test_shape": test_df.shape,
+        "missing_columns_in_test": missing_in_test,
+        "missing_columns_in_train": missing_in_train,
+        "train_label_distribution": train_label_counts.to_dict(),
+        "test_label_distribution": test_label_counts.to_dict(),
+    }
+
+    save_json(validation_summary, RESULT_DIR / "validation_summary.json")
+
+    print("\nValidation completed.")
 
 
 # ============================================================
@@ -159,29 +206,36 @@ def clean_data(df: pd.DataFrame, dataset_name: str):
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
-    inf_count = np.isinf(df[numeric_cols]).sum().sum()
-    duplicate_count = df.duplicated().sum()
-    missing_before = df.isnull().sum().sum()
+    if numeric_cols:
+        inf_count = int(np.isinf(df[numeric_cols]).sum().sum())
+    else:
+        inf_count = 0
+
+    missing_before = int(df.isnull().sum().sum())
+    duplicate_count = int(df.duplicated().sum())
 
     print(f"Infinite values before cleaning: {inf_count}")
     print(f"Missing values before cleaning : {missing_before}")
-    print(f"Duplicate rows               : {duplicate_count}")
+    print(f"Duplicate rows                : {duplicate_count}")
 
-    df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
+    if numeric_cols:
+        df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
 
-    missing_after = df.isnull().sum().sum()
+    missing_after = int(df.isnull().sum().sum())
+
+    print(f"Missing values after replacing inf: {missing_after}")
 
     cleaning_summary = {
         "dataset": dataset_name,
         "rows": df.shape[0],
         "columns": df.shape[1],
-        "infinite_values_before_cleaning": int(inf_count),
-        "missing_values_before_cleaning": int(missing_before),
-        "missing_values_after_replacing_inf": int(missing_after),
-        "duplicate_rows": int(duplicate_count)
+        "infinite_values_before_cleaning": inf_count,
+        "missing_values_before_cleaning": missing_before,
+        "missing_values_after_replacing_inf": missing_after,
+        "duplicate_rows": duplicate_count,
     }
 
-    save_json(cleaning_summary, REPORT_DIR / f"cleaning_summary_{dataset_name}.json")
+    save_json(cleaning_summary, RESULT_DIR / f"cleaning_summary_{dataset_name}.json")
 
     return df
 
@@ -190,18 +244,18 @@ def clean_data(df: pd.DataFrame, dataset_name: str):
 # 6. SPLIT FEATURES AND TARGET
 # ============================================================
 
-def split_features_target(train_df, test_df):
+def split_features_target(train_df: pd.DataFrame, test_df: pd.DataFrame):
     print_section("4. SPLIT FEATURES AND TARGET")
 
     y_train = train_df[TARGET_COL].astype(int)
     y_test = test_df[TARGET_COL].astype(int)
 
-    drop_cols = [col for col in DROP_COLS + [TARGET_COL] if col in train_df.columns]
+    dropped_cols = [col for col in DROP_COLS + [TARGET_COL] if col in train_df.columns]
 
-    X_train = train_df.drop(columns=drop_cols)
-    X_test = test_df.drop(columns=drop_cols)
+    X_train = train_df.drop(columns=dropped_cols)
+    X_test = test_df.drop(columns=dropped_cols)
 
-    print(f"Dropped columns: {drop_cols}")
+    print(f"Dropped columns: {dropped_cols}")
     print(f"X_train shape: {X_train.shape}")
     print(f"X_test shape : {X_test.shape}")
     print(f"y_train shape: {y_train.shape}")
@@ -209,23 +263,23 @@ def split_features_target(train_df, test_df):
 
     split_summary = {
         "target_col": TARGET_COL,
-        "dropped_cols": drop_cols,
+        "dropped_cols": dropped_cols,
         "X_train_shape": X_train.shape,
         "X_test_shape": X_test.shape,
         "y_train_shape": y_train.shape,
-        "y_test_shape": y_test.shape
+        "y_test_shape": y_test.shape,
     }
 
-    save_json(split_summary, REPORT_DIR / "split_summary.json")
+    save_json(split_summary, RESULT_DIR / "split_summary.json")
 
-    return X_train, X_test, y_train, y_test, drop_cols
+    return X_train, X_test, y_train, y_test, dropped_cols
 
 
 # ============================================================
 # 7. IDENTIFY FEATURE TYPES
 # ============================================================
 
-def identify_feature_types(X_train):
+def identify_feature_types(X_train: pd.DataFrame):
     print_section("5. IDENTIFY FEATURE TYPES")
 
     categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
@@ -252,10 +306,10 @@ def identify_feature_types(X_train):
         "other_cols": other_cols,
         "num_categorical_cols": len(categorical_cols),
         "num_numerical_cols": len(numerical_cols),
-        "num_other_cols": len(other_cols)
+        "num_other_cols": len(other_cols),
     }
 
-    save_json(feature_type_summary, REPORT_DIR / "feature_type_summary.json")
+    save_json(feature_type_summary, RESULT_DIR / "feature_type_summary.json")
 
     return categorical_cols, numerical_cols, other_cols
 
@@ -270,23 +324,23 @@ def build_preprocessor(categorical_cols, numerical_cols):
     numeric_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler())
+            ("scaler", StandardScaler()),
         ]
     )
 
     categorical_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("onehot", create_one_hot_encoder())
+            ("onehot", create_one_hot_encoder()),
         ]
     )
 
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", numeric_pipeline, numerical_cols),
-            ("cat", categorical_pipeline, categorical_cols)
+            ("cat", categorical_pipeline, categorical_cols),
         ],
-        remainder="drop"
+        remainder="drop",
     )
 
     print("Numerical pipeline:")
@@ -296,6 +350,19 @@ def build_preprocessor(categorical_cols, numerical_cols):
     print("\nCategorical pipeline:")
     print("- SimpleImputer(strategy='most_frequent')")
     print("- OneHotEncoder(handle_unknown='ignore')")
+
+    pipeline_summary = {
+        "numerical_pipeline": [
+            "SimpleImputer(strategy='median')",
+            "StandardScaler()",
+        ],
+        "categorical_pipeline": [
+            "SimpleImputer(strategy='most_frequent')",
+            "OneHotEncoder(handle_unknown='ignore')",
+        ],
+    }
+
+    save_json(pipeline_summary, RESULT_DIR / "preprocessing_pipeline_summary.json")
 
     return preprocessor
 
@@ -330,7 +397,7 @@ def get_feature_names(preprocessor, categorical_cols, numerical_cols):
 
     feature_names.extend(numerical_cols)
 
-    if len(categorical_cols) > 0:
+    if categorical_cols:
         cat_pipeline = preprocessor.named_transformers_["cat"]
         onehot = cat_pipeline.named_steps["onehot"]
 
@@ -351,18 +418,16 @@ def get_feature_names(preprocessor, categorical_cols, numerical_cols):
 # ============================================================
 
 def plot_preprocessing_pipeline_flow():
-    print_section("9. VISUALIZE PREPROCESSING PIPELINE")
-
-    plt.figure(figsize=(14, 4))
+    plt.figure(figsize=(15, 4))
 
     steps = [
         "Raw CSV\nUNSW-NB15",
-        "Clean data\ninf → NaN",
+        "Clean data\ninf -> NaN",
         "Drop columns\nid, attack_cat",
         "Split X / y\nlabel target",
         "Numerical\nmedian + scaler",
         "Categorical\nmode + one-hot",
-        "Processed data\nmodel-ready"
+        "Processed data\nmodel-ready",
     ]
 
     x_positions = np.linspace(0.06, 0.94, len(steps))
@@ -375,7 +440,7 @@ def plot_preprocessing_pipeline_flow():
             ha="center",
             va="center",
             fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.45", fc="white", ec="black")
+            bbox=dict(boxstyle="round,pad=0.45", fc="white", ec="black"),
         )
 
         if i < len(steps) - 1:
@@ -383,85 +448,111 @@ def plot_preprocessing_pipeline_flow():
                 "",
                 xy=(x_positions[i + 1] - 0.055, 0.5),
                 xytext=(x + 0.055, 0.5),
-                arrowprops=dict(arrowstyle="->")
+                arrowprops=dict(arrowstyle="->"),
             )
 
     plt.axis("off")
     plt.title("Preprocessing Pipeline Flow")
-    save_figure("preprocessing_pipeline_flow.png")
+    save_figure("01_preprocessing_pipeline_flow.png")
 
 
-def plot_feature_group_counts(categorical_cols, numerical_cols, dropped_cols):
+def plot_feature_group_donut(categorical_cols, numerical_cols, dropped_cols):
     labels = ["Numerical", "Categorical", "Dropped"]
     values = [len(numerical_cols), len(categorical_cols), len(dropped_cols)]
 
-    plt.figure(figsize=(7, 5))
-    plt.bar(labels, values)
+    plt.figure(figsize=(7, 6))
+    plt.pie(
+        values,
+        labels=labels,
+        autopct="%1.1f%%",
+        startangle=90,
+        wedgeprops={"width": 0.42},
+    )
+
+    plt.text(
+        0,
+        0,
+        f"{sum(values)}\ncolumns",
+        ha="center",
+        va="center",
+        fontsize=12,
+    )
+
     plt.title("Feature Groups Before Preprocessing")
-    plt.xlabel("Feature Group")
-    plt.ylabel("Number of Columns")
-
-    for i, value in enumerate(values):
-        plt.text(i, value, str(value), ha="center", va="bottom")
-
-    save_figure("preprocessing_feature_group_counts.png")
+    save_figure("02_feature_group_donut.png")
 
     df = pd.DataFrame({
         "feature_group": labels,
-        "count": values
+        "count": values,
     })
-    df.to_csv(REPORT_DIR / "preprocessing_feature_group_counts.csv", index=False)
+    df.to_csv(RESULT_DIR / "feature_group_counts.csv", index=False)
 
 
-def plot_feature_count_before_after(X_train, X_train_processed):
-    labels = ["Before Preprocessing", "After Preprocessing"]
-    values = [X_train.shape[1], X_train_processed.shape[1]]
+def plot_feature_count_slope(X_train, X_train_processed):
+    before_count = X_train.shape[1]
+    after_count = X_train_processed.shape[1]
 
     plt.figure(figsize=(7, 5))
-    plt.bar(labels, values)
-    plt.title("Feature Count Before and After Preprocessing")
-    plt.xlabel("Stage")
+
+    x = [0, 1]
+    y = [before_count, after_count]
+
+    plt.plot(x, y, marker="o", linewidth=2)
+
+    plt.text(0, before_count, f"Before\n{before_count}", ha="right", va="center")
+    plt.text(1, after_count, f"After\n{after_count}", ha="left", va="center")
+
+    plt.xticks([0, 1], ["Before", "After"])
     plt.ylabel("Number of Features")
+    plt.title("Feature Expansion After Preprocessing")
+    plt.grid(axis="y", alpha=0.3)
 
-    for i, value in enumerate(values):
-        plt.text(i, value, str(value), ha="center", va="bottom")
-
-    save_figure("preprocessing_feature_count_before_after.png")
+    save_figure("03_feature_count_slope_chart.png")
 
     df = pd.DataFrame({
-        "stage": labels,
-        "feature_count": values
+        "stage": ["before_preprocessing", "after_preprocessing"],
+        "feature_count": [before_count, after_count],
     })
-    df.to_csv(REPORT_DIR / "preprocessing_feature_count_before_after.csv", index=False)
+    df.to_csv(RESULT_DIR / "feature_count_before_after.csv", index=False)
 
 
-def plot_categorical_cardinality(X_train, categorical_cols):
-    if len(categorical_cols) == 0:
+def plot_categorical_cardinality_lollipop(X_train, categorical_cols):
+    if not categorical_cols:
         print("No categorical columns to visualize.")
         return
 
     cardinality_df = pd.DataFrame({
         "column": categorical_cols,
-        "unique_count": [X_train[col].nunique() for col in categorical_cols]
-    }).sort_values("unique_count", ascending=False)
+        "unique_count": [X_train[col].nunique() for col in categorical_cols],
+    }).sort_values("unique_count", ascending=True)
 
-    cardinality_df.to_csv(REPORT_DIR / "preprocessing_categorical_cardinality.csv", index=False)
+    cardinality_df.to_csv(RESULT_DIR / "categorical_cardinality.csv", index=False)
 
     plt.figure(figsize=(8, 5))
-    plt.bar(cardinality_df["column"], cardinality_df["unique_count"])
-    plt.title("Unique Values in Categorical Features")
-    plt.xlabel("Categorical Feature")
-    plt.ylabel("Number of Unique Values")
-    plt.xticks(rotation=45, ha="right")
+
+    y_pos = np.arange(len(cardinality_df))
+
+    plt.hlines(
+        y=y_pos,
+        xmin=0,
+        xmax=cardinality_df["unique_count"],
+        linewidth=2,
+    )
+    plt.plot(cardinality_df["unique_count"], y_pos, "o")
+
+    plt.yticks(y_pos, cardinality_df["column"])
+    plt.xlabel("Number of Unique Values")
+    plt.ylabel("Categorical Feature")
+    plt.title("Categorical Feature Cardinality")
 
     for i, value in enumerate(cardinality_df["unique_count"]):
-        plt.text(i, value, str(value), ha="center", va="bottom")
+        plt.text(value, i, f" {value}", va="center")
 
-    save_figure("preprocessing_categorical_cardinality.png")
+    save_figure("04_categorical_cardinality_lollipop.png")
 
 
-def plot_onehot_expansion(categorical_cols, feature_names):
-    if len(categorical_cols) == 0:
+def plot_onehot_expansion_lollipop(categorical_cols, feature_names):
+    if not categorical_cols:
         print("No categorical columns for one-hot expansion.")
         return
 
@@ -470,55 +561,156 @@ def plot_onehot_expansion(categorical_cols, feature_names):
     for col in categorical_cols:
         prefix = f"{col}_"
         count = sum(name.startswith(prefix) for name in feature_names)
+
         onehot_counts.append({
             "column": col,
-            "onehot_output_features": count
+            "onehot_output_features": count,
         })
 
-    onehot_df = pd.DataFrame(onehot_counts)
-    onehot_df.to_csv(REPORT_DIR / "preprocessing_onehot_expansion.csv", index=False)
+    onehot_df = pd.DataFrame(onehot_counts).sort_values(
+        "onehot_output_features",
+        ascending=True,
+    )
+
+    onehot_df.to_csv(RESULT_DIR / "onehot_expansion.csv", index=False)
 
     plt.figure(figsize=(8, 5))
-    plt.bar(onehot_df["column"], onehot_df["onehot_output_features"])
-    plt.title("One-Hot Encoding Feature Expansion")
-    plt.xlabel("Categorical Feature")
-    plt.ylabel("Number of Output Features")
-    plt.xticks(rotation=45, ha="right")
+
+    y_pos = np.arange(len(onehot_df))
+
+    plt.hlines(
+        y=y_pos,
+        xmin=0,
+        xmax=onehot_df["onehot_output_features"],
+        linewidth=2,
+    )
+    plt.plot(onehot_df["onehot_output_features"], y_pos, "o")
+
+    plt.yticks(y_pos, onehot_df["column"])
+    plt.xlabel("Number of Output Features")
+    plt.ylabel("Categorical Feature")
+    plt.title("One-Hot Encoding Expansion")
 
     for i, value in enumerate(onehot_df["onehot_output_features"]):
-        plt.text(i, value, str(value), ha="center", va="bottom")
+        plt.text(value, i, f" {value}", va="center")
 
-    save_figure("preprocessing_onehot_expansion.png")
+    save_figure("05_onehot_expansion_lollipop.png")
 
 
-def plot_label_distribution(y_train):
+def plot_label_distribution_donut(y_train):
     label_counts = pd.Series(y_train).value_counts().sort_index()
     label_names = ["Normal" if label == 0 else "Attack" for label in label_counts.index]
 
-    plt.figure(figsize=(7, 5))
-    plt.bar(label_names, label_counts.values)
+    plt.figure(figsize=(7, 6))
+    plt.pie(
+        label_counts.values,
+        labels=label_names,
+        autopct="%1.1f%%",
+        startangle=90,
+        wedgeprops={"width": 0.42},
+    )
+
+    plt.text(
+        0,
+        0,
+        f"{len(y_train):,}\nrecords",
+        ha="center",
+        va="center",
+        fontsize=12,
+    )
+
     plt.title("Label Distribution in Training Set")
-    plt.xlabel("Label")
-    plt.ylabel("Number of Records")
+    save_figure("06_label_distribution_donut.png")
 
-    for i, value in enumerate(label_counts.values):
-        plt.text(i, value, str(value), ha="center", va="bottom")
+    label_df = pd.DataFrame({
+        "label": label_counts.index,
+        "label_name": label_names,
+        "count": label_counts.values,
+        "ratio_percent": label_counts.values / len(y_train) * 100,
+    })
 
-    save_figure("preprocessing_label_distribution.png")
+    label_df.to_csv(RESULT_DIR / "label_distribution_after_split.csv", index=False)
 
 
-def plot_scaling_examples(X_train, X_train_processed, numerical_cols):
+def plot_missing_values_matrix(train_df, test_df):
+    train_missing = train_df.isnull().astype(int)
+    test_missing = test_df.isnull().astype(int)
+
+    sample_train = train_missing.head(300)
+    sample_test = test_missing.head(300)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    axes[0].imshow(sample_train.T, aspect="auto", interpolation="nearest")
+    axes[0].set_title("Missing Value Matrix - Train Sample")
+    axes[0].set_xlabel("Row Sample")
+    axes[0].set_ylabel("Columns")
+    axes[0].set_yticks(range(len(train_df.columns)))
+    axes[0].set_yticklabels(train_df.columns, fontsize=6)
+
+    axes[1].imshow(sample_test.T, aspect="auto", interpolation="nearest")
+    axes[1].set_title("Missing Value Matrix - Test Sample")
+    axes[1].set_xlabel("Row Sample")
+    axes[1].set_ylabel("Columns")
+    axes[1].set_yticks(range(len(test_df.columns)))
+    axes[1].set_yticklabels(test_df.columns, fontsize=6)
+
+    save_path = FIGURE_DIR / "07_missing_value_matrix.png"
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+    print(f"[OK] Saved figure: {save_path}")
+
+    summary_df = pd.DataFrame({
+        "dataset": ["train", "test"],
+        "missing_values": [
+            int(train_df.isnull().sum().sum()),
+            int(test_df.isnull().sum().sum()),
+        ],
+    })
+    summary_df.to_csv(RESULT_DIR / "missing_values_before_imputation.csv", index=False)
+
+
+def plot_missing_values_text_card(train_df, test_df):
+    train_missing = int(train_df.isnull().sum().sum())
+    test_missing = int(test_df.isnull().sum().sum())
+
+    plt.figure(figsize=(8, 4))
+    plt.axis("off")
+
+    text = (
+        "Missing Values Before Imputation\n\n"
+        f"Train missing values: {train_missing:,}\n"
+        f"Test missing values : {test_missing:,}\n\n"
+        "Missing values and infinite values are handled by the preprocessing pipeline."
+    )
+
+    plt.text(
+        0.5,
+        0.5,
+        text,
+        ha="center",
+        va="center",
+        fontsize=13,
+        bbox=dict(boxstyle="round,pad=0.7", fc="white", ec="black"),
+    )
+
+    save_figure("08_missing_values_text_card.png")
+
+
+def plot_scaling_histograms(X_train, X_train_processed, numerical_cols):
     selected_cols = [
         "dur",
         "sbytes",
         "dbytes",
         "sload",
-        "dload"
+        "dload",
     ]
 
     selected_cols = [col for col in selected_cols if col in numerical_cols]
 
-    if len(selected_cols) == 0:
+    if not selected_cols:
         print("No selected numerical columns found for scaling visualization.")
         return
 
@@ -526,44 +718,225 @@ def plot_scaling_examples(X_train, X_train_processed, numerical_cols):
         col_index = numerical_cols.index(col)
 
         raw_values = X_train[col].replace([np.inf, -np.inf], np.nan).dropna()
-        scaled_values = X_train_processed[:, col_index]
+        raw_values = raw_values[raw_values >= 0]
 
-        if sparse.issparse(X_train_processed):
-            scaled_values = scaled_values.toarray().ravel()
-        else:
-            scaled_values = np.asarray(scaled_values).ravel()
+        scaled_values = get_dense_column(X_train_processed, col_index)
 
         plt.figure(figsize=(8, 5))
-        np.log1p(raw_values).hist(bins=50)
+        plt.hist(np.log1p(raw_values), bins=50)
         plt.title(f"Before Scaling - log1p({col})")
         plt.xlabel(f"log1p({col})")
         plt.ylabel("Frequency")
-        save_figure(f"preprocessing_before_scaling_{col}.png")
+        save_figure(f"09_hist_before_scaling_{col}.png")
 
         plt.figure(figsize=(8, 5))
-        pd.Series(scaled_values).hist(bins=50)
+        plt.hist(scaled_values, bins=50)
         plt.title(f"After StandardScaler - {col}")
         plt.xlabel(f"scaled {col}")
         plt.ylabel("Frequency")
-        save_figure(f"preprocessing_after_scaling_{col}.png")
+        save_figure(f"10_hist_after_scaling_{col}.png")
+
+
+def plot_scaling_density_lines(X_train, X_train_processed, numerical_cols):
+    selected_cols = ["dur", "sbytes", "dbytes"]
+    selected_cols = [col for col in selected_cols if col in numerical_cols]
+
+    for col in selected_cols:
+        col_index = numerical_cols.index(col)
+
+        raw_values = X_train[col].replace([np.inf, -np.inf], np.nan).dropna()
+        raw_values = raw_values[raw_values >= 0]
+        raw_values = np.log1p(raw_values)
+
+        scaled_values = get_dense_column(X_train_processed, col_index)
+
+        raw_density, raw_bins = np.histogram(raw_values, bins=60, density=True)
+        scaled_density, scaled_bins = np.histogram(scaled_values, bins=60, density=True)
+
+        raw_centers = (raw_bins[:-1] + raw_bins[1:]) / 2
+        scaled_centers = (scaled_bins[:-1] + scaled_bins[1:]) / 2
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(raw_centers, raw_density, label=f"Before: log1p({col})")
+        plt.plot(scaled_centers, scaled_density, label=f"After: scaled {col}")
+
+        plt.title(f"Density Line Before and After Scaling - {col}")
+        plt.xlabel("Value")
+        plt.ylabel("Density")
+        plt.legend()
+
+        save_figure(f"11_density_before_after_scaling_{col}.png")
+
+
+def plot_scaling_violin(X_train, X_train_processed, numerical_cols):
+    selected_cols = ["dur", "sbytes", "dbytes"]
+    selected_cols = [col for col in selected_cols if col in numerical_cols]
+
+    for col in selected_cols:
+        col_index = numerical_cols.index(col)
+
+        raw_values = X_train[col].replace([np.inf, -np.inf], np.nan).dropna()
+        raw_values = raw_values[raw_values >= 0]
+        raw_values = np.log1p(raw_values).values
+
+        scaled_values = get_dense_column(X_train_processed, col_index)
+
+        raw_values = sample_array(raw_values, max_sample=5000)
+        scaled_values = sample_array(scaled_values, max_sample=5000)
+
+        plt.figure(figsize=(7, 5))
+        plt.violinplot(
+            [raw_values, scaled_values],
+            showmeans=True,
+            showmedians=True,
+        )
+        plt.xticks([1, 2], [f"log1p({col})", f"scaled {col}"])
+        plt.ylabel("Value")
+        plt.title(f"Violin Plot Before and After Scaling - {col}")
+
+        save_figure(f"12_violin_before_after_scaling_{col}.png")
+
+
+def plot_scaling_ecdf(X_train, X_train_processed, numerical_cols):
+    selected_cols = ["dur", "sbytes", "dbytes"]
+    selected_cols = [col for col in selected_cols if col in numerical_cols]
+
+    for col in selected_cols:
+        col_index = numerical_cols.index(col)
+
+        raw_values = X_train[col].replace([np.inf, -np.inf], np.nan).dropna()
+        raw_values = raw_values[raw_values >= 0]
+        raw_values = np.log1p(raw_values).values
+
+        scaled_values = get_dense_column(X_train_processed, col_index)
+
+        raw_values = sample_array(raw_values, max_sample=6000)
+        scaled_values = sample_array(scaled_values, max_sample=6000)
+
+        raw_sorted = np.sort(raw_values)
+        scaled_sorted = np.sort(scaled_values)
+
+        raw_y = np.arange(1, len(raw_sorted) + 1) / len(raw_sorted)
+        scaled_y = np.arange(1, len(scaled_sorted) + 1) / len(scaled_sorted)
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(raw_sorted, raw_y, label=f"Before: log1p({col})")
+        plt.plot(scaled_sorted, scaled_y, label=f"After: scaled {col}")
+
+        plt.title(f"ECDF Before and After Scaling - {col}")
+        plt.xlabel("Value")
+        plt.ylabel("Cumulative Probability")
+        plt.legend()
+
+        save_figure(f"13_ecdf_before_after_scaling_{col}.png")
+
+
+def plot_processed_matrix_sparsity(X_train_processed):
+    if sparse.issparse(X_train_processed):
+        total_values = X_train_processed.shape[0] * X_train_processed.shape[1]
+        nonzero_values = X_train_processed.nnz
+    else:
+        total_values = X_train_processed.size
+        nonzero_values = np.count_nonzero(X_train_processed)
+
+    zero_values = total_values - nonzero_values
+
+    labels = ["Zero values", "Non-zero values"]
+    values = [zero_values, nonzero_values]
+
+    plt.figure(figsize=(7, 6))
+    plt.pie(
+        values,
+        labels=labels,
+        autopct="%1.2f%%",
+        startangle=90,
+        wedgeprops={"width": 0.42},
+    )
+
+    plt.title("Sparsity of Processed Feature Matrix")
+
+    save_figure("14_processed_matrix_sparsity_donut.png")
+
+    sparsity_df = pd.DataFrame({
+        "type": labels,
+        "count": values,
+        "ratio_percent": [value / total_values * 100 for value in values],
+    })
+
+    sparsity_df.to_csv(RESULT_DIR / "processed_matrix_sparsity.csv", index=False)
+
+
+def plot_preprocessing_summary_table(
+    X_train,
+    X_train_processed,
+    categorical_cols,
+    numerical_cols,
+    dropped_cols,
+):
+    summary_rows = [
+        ["Original features", X_train.shape[1]],
+        ["Processed features", X_train_processed.shape[1]],
+        ["Numerical columns", len(numerical_cols)],
+        ["Categorical columns", len(categorical_cols)],
+        ["Dropped columns", len(dropped_cols)],
+    ]
+
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.axis("off")
+
+    table = ax.table(
+        cellText=summary_rows,
+        colLabels=["Item", "Value"],
+        cellLoc="center",
+        loc="center",
+    )
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 1.4)
+
+    plt.title("Preprocessing Summary Table")
+
+    save_path = FIGURE_DIR / "15_preprocessing_summary_table.png"
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    print(f"[OK] Saved figure: {save_path}")
 
 
 def create_preprocessing_visualizations(
+    train_df,
+    test_df,
     X_train,
     X_train_processed,
     y_train,
     categorical_cols,
     numerical_cols,
     dropped_cols,
-    feature_names
+    feature_names,
 ):
+    print_section("9. CREATE PREPROCESSING VISUALIZATIONS")
+
     plot_preprocessing_pipeline_flow()
-    plot_feature_group_counts(categorical_cols, numerical_cols, dropped_cols)
-    plot_feature_count_before_after(X_train, X_train_processed)
-    plot_categorical_cardinality(X_train, categorical_cols)
-    plot_onehot_expansion(categorical_cols, feature_names)
-    plot_label_distribution(y_train)
-    plot_scaling_examples(X_train, X_train_processed, numerical_cols)
+    plot_feature_group_donut(categorical_cols, numerical_cols, dropped_cols)
+    plot_feature_count_slope(X_train, X_train_processed)
+    plot_categorical_cardinality_lollipop(X_train, categorical_cols)
+    plot_onehot_expansion_lollipop(categorical_cols, feature_names)
+    plot_label_distribution_donut(y_train)
+    plot_missing_values_matrix(train_df, test_df)
+    plot_missing_values_text_card(train_df, test_df)
+    plot_scaling_histograms(X_train, X_train_processed, numerical_cols)
+    plot_scaling_density_lines(X_train, X_train_processed, numerical_cols)
+    plot_scaling_violin(X_train, X_train_processed, numerical_cols)
+    plot_scaling_ecdf(X_train, X_train_processed, numerical_cols)
+    plot_processed_matrix_sparsity(X_train_processed)
+    plot_preprocessing_summary_table(
+        X_train,
+        X_train_processed,
+        categorical_cols,
+        numerical_cols,
+        dropped_cols,
+    )
 
 
 # ============================================================
@@ -579,7 +952,7 @@ def save_outputs(
     feature_names,
     categorical_cols,
     numerical_cols,
-    dropped_cols
+    dropped_cols,
 ):
     print_section("10. SAVE PROCESSED DATA AND ARTIFACTS")
 
@@ -595,7 +968,7 @@ def save_outputs(
         "target_col": TARGET_COL,
         "dropped_cols": dropped_cols,
         "categorical_cols": categorical_cols,
-        "numerical_cols": numerical_cols
+        "numerical_cols": numerical_cols,
     }
 
     save_json(column_info, PROCESSED_DIR / "column_info.json")
@@ -612,10 +985,10 @@ def save_outputs(
         "X_test_processed_shape": X_test_processed.shape,
         "y_train_shape": y_train.shape,
         "y_test_shape": y_test.shape,
-        "preprocessor_path": str(MODEL_DIR / "preprocessor.joblib")
+        "preprocessor_path": str(MODEL_DIR / "preprocessor.joblib"),
     }
 
-    save_json(preprocessing_summary, REPORT_DIR / "preprocessing_summary.json")
+    save_json(preprocessing_summary, RESULT_DIR / "preprocessing_summary.json")
 
     print("[OK] Saved processed data:")
     print(f"- {PROCESSED_DIR / 'X_train_processed.npz'}")
@@ -627,7 +1000,7 @@ def save_outputs(
     print(f"- {MODEL_DIR / 'preprocessor.joblib'}")
     print(f"- {PROCESSED_DIR / 'column_info.json'}")
     print(f"- {PROCESSED_DIR / 'feature_names.json'}")
-    print(f"- {REPORT_DIR / 'preprocessing_summary.json'}")
+    print(f"- {RESULT_DIR / 'preprocessing_summary.json'}")
 
 
 # ============================================================
@@ -640,7 +1013,7 @@ def generate_report_notes(
     y_train,
     categorical_cols,
     numerical_cols,
-    dropped_cols
+    dropped_cols,
 ):
     print_section("11. GENERATE PREPROCESSING REPORT NOTES")
 
@@ -649,82 +1022,112 @@ def generate_report_notes(
     normal_count = int(label_counts.get(0, 0))
     attack_count = int(label_counts.get(1, 0))
 
-    content = f"""# Preprocessing Report Notes
+    lines = [
+        "# Preprocessing Report Notes",
+        "",
+        "## 1. Mục tiêu tiền xử lý",
+        "",
+        "Dữ liệu UNSW-NB15 bao gồm cả thuộc tính số và thuộc tính phân loại.",
+        "Vì các mô hình học máy không thể sử dụng trực tiếp dữ liệu dạng chuỗi,",
+        "dữ liệu cần được chuyển đổi về dạng số trước khi huấn luyện.",
+        "",
+        "## 2. Các cột bị loại bỏ",
+        "",
+        f"Các cột bị loại bỏ: {dropped_cols}",
+        "",
+        "`id` là mã định danh dòng dữ liệu nên không có ý nghĩa dự đoán.",
+        "`attack_cat` thể hiện loại tấn công cụ thể, nên không được dùng trong bài toán phân loại nhị phân Normal/Attack để tránh rò rỉ nhãn.",
+        "",
+        "## 3. Tách đặc trưng và nhãn",
+        "",
+        "Cột nhãn sử dụng là `label`:",
+        "",
+        "- 0 = Normal",
+        "- 1 = Attack",
+        "",
+        "Phân phối nhãn trong tập train:",
+        "",
+        f"- Normal: {normal_count:,}",
+        f"- Attack: {attack_count:,}",
+        "",
+        "## 4. Xử lý thuộc tính số",
+        "",
+        f"Số lượng thuộc tính số: {len(numerical_cols)}",
+        "",
+        "Các thuộc tính số được xử lý bằng:",
+        "",
+        "- SimpleImputer(strategy='median')",
+        "- StandardScaler()",
+        "",
+        "Median được dùng để điền missing value vì bền hơn mean khi dữ liệu có outlier.",
+        "StandardScaler giúp đưa các đặc trưng số về cùng thang đo, đặc biệt cần thiết với các mô hình như Logistic Regression.",
+        "",
+        "## 5. Xử lý thuộc tính phân loại",
+        "",
+        f"Số lượng thuộc tính phân loại: {len(categorical_cols)}",
+        f"Các cột phân loại: {categorical_cols}",
+        "",
+        "Các thuộc tính phân loại được xử lý bằng:",
+        "",
+        "- SimpleImputer(strategy='most_frequent')",
+        "- OneHotEncoder(handle_unknown='ignore')",
+        "",
+        "OneHotEncoder chuyển các cột dạng chuỗi như `proto`, `service`, `state` thành vector số.",
+        "Tham số `handle_unknown='ignore'` giúp hệ thống không lỗi nếu dữ liệu test hoặc dữ liệu streaming có category mới.",
+        "",
+        "## 6. Số feature trước và sau tiền xử lý",
+        "",
+        f"Số feature trước tiền xử lý: {X_train.shape[1]}",
+        f"Số feature sau tiền xử lý: {X_train_processed.shape[1]}",
+        "",
+        "Số feature tăng lên sau tiền xử lý do các thuộc tính phân loại được mở rộng bằng One-Hot Encoding.",
+        "",
+        "## 7. Tránh data leakage",
+        "",
+        "Preprocessor chỉ được fit trên tập train.",
+        "Tập test chỉ được transform bằng preprocessor đã fit.",
+        "Cách làm này giúp tránh data leakage, tức là tránh việc thông tin từ tập test bị sử dụng trong quá trình huấn luyện.",
+        "",
+        "## 8. Tái sử dụng trong streaming",
+        "",
+        "Preprocessor được lưu tại:",
+        "",
+        "models/preprocessor.joblib",
+        "",
+        "Trong giai đoạn mô phỏng streaming, các micro-batch mới sẽ phải đi qua đúng preprocessor này trước khi đưa vào mô hình dự đoán.",
+        "",
+        "## 9. Output",
+        "",
+        "Dữ liệu processed được lưu trong:",
+        "",
+        "data/processed/",
+        "",
+        "Biểu đồ preprocessing được lưu trong:",
+        "",
+        "reports/figures/preprocessing/",
+        "",
+        "Bảng kết quả preprocessing được lưu trong:",
+        "",
+        "reports/results/preprocessing/",
+        "",
+        "## 10. Các loại biểu đồ đã tạo",
+        "",
+        "- Flow diagram: mô tả luồng tiền xử lý.",
+        "- Donut chart: tỷ trọng nhóm feature và độ thưa của ma trận sau xử lý.",
+        "- Slope chart: số feature trước và sau tiền xử lý.",
+        "- Lollipop chart: cardinality và số feature sau One-Hot Encoding.",
+        "- Missing-value matrix: trực quan tình trạng missing value.",
+        "- Histogram, density line, violin plot, ECDF: so sánh dữ liệu số trước và sau scaling.",
+        "- Summary table image: bảng tóm tắt tiền xử lý.",
+    ]
 
-## Mục tiêu tiền xử lý
+    content = "\n".join(lines)
 
-Dữ liệu UNSW-NB15 bao gồm cả thuộc tính số và thuộc tính phân loại. Vì các mô hình học máy không thể sử dụng trực tiếp dữ liệu dạng chuỗi, dữ liệu cần được chuyển đổi về dạng số trước khi huấn luyện.
-
-## Các cột bị loại bỏ
-
-Các cột bị loại bỏ:
-
-{dropped_cols}
-
-Trong đó, `id` là mã định danh dòng dữ liệu nên không có ý nghĩa dự đoán. Cột `attack_cat` thể hiện loại tấn công cụ thể, nên không được dùng trong bài toán phân loại nhị phân Normal/Attack để tránh rò rỉ nhãn.
-
-## Tách đặc trưng và nhãn
-
-Cột nhãn sử dụng là `label`, trong đó:
-
-0 = Normal  
-1 = Attack
-
-Phân phối nhãn trong tập train:
-
-Normal: {normal_count}  
-Attack: {attack_count}
-
-## Xử lý thuộc tính số
-
-Số lượng thuộc tính số: {len(numerical_cols)}
-
-Các thuộc tính số được xử lý bằng:
-
-SimpleImputer(strategy="median")  
-StandardScaler()
-
-Median được dùng để điền missing value vì bền hơn mean khi dữ liệu có outlier. StandardScaler giúp đưa các đặc trưng số về cùng thang đo, đặc biệt cần thiết với các mô hình như Logistic Regression.
-
-## Xử lý thuộc tính phân loại
-
-Số lượng thuộc tính phân loại: {len(categorical_cols)}
-
-Các cột phân loại:
-
-{categorical_cols}
-
-Các thuộc tính phân loại được xử lý bằng:
-
-SimpleImputer(strategy="most_frequent")  
-OneHotEncoder(handle_unknown="ignore")
-
-OneHotEncoder chuyển các cột dạng chuỗi như `proto`, `service`, `state` thành vector số. Tham số `handle_unknown="ignore"` giúp hệ thống không lỗi nếu dữ liệu test hoặc dữ liệu streaming có category mới.
-
-## Số feature trước và sau tiền xử lý
-
-Số feature trước tiền xử lý: {X_train.shape[1]}  
-Số feature sau tiền xử lý: {X_train_processed.shape[1]}
-
-Số feature tăng lên sau tiền xử lý do các thuộc tính phân loại được mở rộng bằng One-Hot Encoding.
-
-## Tránh data leakage
-
-Preprocessor chỉ được fit trên tập train. Tập test chỉ được transform bằng preprocessor đã fit. Cách làm này giúp tránh data leakage, tức là tránh việc thông tin từ tập test bị sử dụng trong quá trình huấn luyện.
-
-## Tái sử dụng trong streaming
-
-Preprocessor được lưu tại:
-
-models/preprocessor.joblib
-
-Trong giai đoạn mô phỏng streaming, các micro-batch mới sẽ phải đi qua đúng preprocessor này trước khi đưa vào mô hình dự đoán.
-"""
-
-    report_path = REPORT_DIR / "preprocessing_report_notes.md"
+    report_path = RESULT_DIR / "preprocessing_report_notes.md"
     report_path.write_text(content, encoding="utf-8")
 
     print(f"[OK] Saved report notes: {report_path}")
+
 
 # ============================================================
 # 14. MAIN
@@ -740,36 +1143,38 @@ def main():
 
     X_train, X_test, y_train, y_test, dropped_cols = split_features_target(
         train_df,
-        test_df
+        test_df,
     )
 
     categorical_cols, numerical_cols, other_cols = identify_feature_types(X_train)
 
     if other_cols:
-        print("[WARNING] Other column types found. They will be ignored.")
+        print("[WARNING] Other column types found. They will be ignored by current pipeline.")
 
     preprocessor = build_preprocessor(categorical_cols, numerical_cols)
 
     X_train_processed, X_test_processed = fit_transform_data(
         preprocessor,
         X_train,
-        X_test
+        X_test,
     )
 
     feature_names = get_feature_names(
         preprocessor,
         categorical_cols,
-        numerical_cols
+        numerical_cols,
     )
 
     create_preprocessing_visualizations(
+        train_df=train_df,
+        test_df=test_df,
         X_train=X_train,
         X_train_processed=X_train_processed,
         y_train=y_train,
         categorical_cols=categorical_cols,
         numerical_cols=numerical_cols,
         dropped_cols=dropped_cols,
-        feature_names=feature_names
+        feature_names=feature_names,
     )
 
     save_outputs(
@@ -781,7 +1186,7 @@ def main():
         feature_names=feature_names,
         categorical_cols=categorical_cols,
         numerical_cols=numerical_cols,
-        dropped_cols=dropped_cols
+        dropped_cols=dropped_cols,
     )
 
     generate_report_notes(
@@ -790,13 +1195,13 @@ def main():
         y_train=y_train,
         categorical_cols=categorical_cols,
         numerical_cols=numerical_cols,
-        dropped_cols=dropped_cols
+        dropped_cols=dropped_cols,
     )
 
     print("\nPreprocessing completed successfully.")
     print(f"Processed data saved to: {PROCESSED_DIR}")
     print(f"Figures saved to: {FIGURE_DIR}")
-    print(f"Reports saved to: {REPORT_DIR}")
+    print(f"Reports saved to: {RESULT_DIR}")
 
 
 if __name__ == "__main__":
