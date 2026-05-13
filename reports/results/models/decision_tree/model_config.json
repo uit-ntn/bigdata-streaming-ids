@@ -1,0 +1,19 @@
+{
+    "model_name": "decision_tree",
+    "algorithm": "Decision Tree Classifier",
+    "task": "Binary Classification",
+    "target": "label",
+    "label_mapping": {
+        "0": "Normal",
+        "1": "Attack"
+    },
+    "parameters": {
+        "criterion": "gini",
+        "max_depth": 12,
+        "min_samples_split": 20,
+        "min_samples_leaf": 10,
+        "class_weight": "balanced",
+        "random_state": 42
+    },
+    "note": "Decision Tree is used as a non-linear baseline model. It is easier to interpret than many ensemble models and can provide feature importance."
+}

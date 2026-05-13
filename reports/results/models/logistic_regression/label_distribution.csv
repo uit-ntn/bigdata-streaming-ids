@@ -1,0 +1,5 @@
+dataset,label,label_name,count,ratio_percent
+train,0,Normal,56000,31.93776697977085
+train,1,Attack,119341,68.06223302022916
+test,0,Normal,37000,44.939999028324344
+test,1,Attack,45332,55.06000097167566

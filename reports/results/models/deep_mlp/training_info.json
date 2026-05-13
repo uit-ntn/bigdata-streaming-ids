@@ -1,0 +1,9 @@
+{
+    "train_time_seconds": 117.59141182899475,
+    "epochs_configured": 40,
+    "epochs_completed": 28,
+    "batch_size": 512,
+    "validation_split": 0.2,
+    "final_model_path": "D:\\src\\bigdata\\bigdata-streaming-ids\\models\\deep_mlp\\deep_mlp_final.keras",
+    "history_path": "D:\\src\\bigdata\\bigdata-streaming-ids\\models\\deep_mlp\\deep_mlp_history.joblib"
+}

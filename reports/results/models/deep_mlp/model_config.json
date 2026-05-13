@@ -1,0 +1,51 @@
+{
+    "model_name": "deep_mlp",
+    "algorithm": "Deep Neural Network - Multi-Layer Perceptron",
+    "task": "Binary Classification",
+    "target": "label",
+    "label_mapping": {
+        "0": "Normal",
+        "1": "Attack"
+    },
+    "architecture": {
+        "input": "processed_feature_vector",
+        "hidden_layers": [
+            {
+                "units": 256,
+                "activation": "relu",
+                "batch_normalization": true,
+                "dropout": 0.3
+            },
+            {
+                "units": 128,
+                "activation": "relu",
+                "batch_normalization": true,
+                "dropout": 0.3
+            },
+            {
+                "units": 64,
+                "activation": "relu",
+                "batch_normalization": false,
+                "dropout": 0.2
+            }
+        ],
+        "output": {
+            "units": 1,
+            "activation": "sigmoid"
+        }
+    },
+    "training_parameters": {
+        "epochs": 40,
+        "batch_size": 512,
+        "validation_split": 0.2,
+        "optimizer": "Adam",
+        "learning_rate": 0.001,
+        "loss": "binary_crossentropy",
+        "early_stopping_patience": 6,
+        "reduce_lr_patience": 3,
+        "reduce_lr_factor": 0.5,
+        "class_weight": "balanced",
+        "random_state": 42
+    },
+    "note": "MLP is used because UNSW-NB15 after preprocessing is tabular feature-vector data. The model learns non-linear relationships between numerical and one-hot encoded categorical features."
+}

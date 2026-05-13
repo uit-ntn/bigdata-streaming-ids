@@ -1,0 +1,9 @@
+{
+    "dataset": "train",
+    "rows": 175341,
+    "columns": 45,
+    "infinite_values_before_cleaning": 0,
+    "missing_values_before_cleaning": 0,
+    "missing_values_after_replacing_inf": 0,
+    "duplicate_rows": 0
+}

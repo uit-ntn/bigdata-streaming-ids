@@ -1,0 +1,5 @@
+column,unique_count,top_value,top_count,top_ratio_percent
+proto,133,tcp,79946,45.59458426722786
+service,13,-,94168,53.70563644555466
+state,9,INT,82275,46.922853183225826
+attack_cat,10,Normal,56000,31.93776697977085

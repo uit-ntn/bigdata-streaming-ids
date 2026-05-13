@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BigData Streaming IDS Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+<div class="page">
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">BigData Streaming IDS</p>
+            <h1>Network Intrusion Detection Demo</h1>
+            <p class="subtitle">
+                Dự đoán traffic mạng là <strong>Normal</strong> hay <strong>Attack</strong>.
+            </p>
+        </div>
+        <div class="app-status">
+            <span class="dot"></span>
+            Local Flask App
+        </div>
+    </header>
+
+    {% if error %}
+    <section class="error-box">
+        <h3>Error</h3>
+        <p>{{ error }}</p>
+        {% if traceback %}
+        <details>
+            <summary>Show traceback</summary>
+            <pre>{{ traceback }}</pre>
+        </details>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="summary-row">
+        <div class="mini-card">
+            <span>Testing Shape</span>
+            <strong>{{ test_shape }}</strong>
+        </div>
+
+        {% if test_label_summary %}
+        <div class="mini-card">
+            <span>Actual Normal</span>
+            <strong>{{ "{:,}".format(test_label_summary.normal) }}</strong>
+        </div>
+
+        <div class="mini-card">
+            <span>Actual Attack</span>
+            <strong>{{ "{:,}".format(test_label_summary.attack) }}</strong>
+        </div>
+        {% endif %}
+    </section>
+
+    <form method="POST" class="panel">
+        <div class="panel-head">
+            <h2>Demo Configuration</h2>
+            <button type="submit" class="primary-button">Run IDS Prediction</button>
+        </div>
+
+        <div class="config-grid">
+            <div class="form-field">
+                <label>Model</label>
+                <select name="selected_model">
+                    {% for key, model in available_models.items() %}
+                    <option value="{{ key }}" {% if key == selected_model %}selected{% endif %}>
+                        {{ model.display_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Input Mode</label>
+                <select name="input_mode">
+                    <option value="manual" {% if input_mode == "manual" %}selected{% endif %}>Manual Input</option>
+                    <option value="first_n" {% if input_mode == "first_n" %}selected{% endif %}>First N Records</option>
+                    <option value="random" {% if input_mode == "random" %}selected{% endif %}>Random Sample</option>
+                    <option value="attack_only" {% if input_mode == "attack_only" %}selected{% endif %}>Only Attack</option>
+                    <option value="normal_only" {% if input_mode == "normal_only" %}selected{% endif %}>Only Normal</option>
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Threshold</label>
+                <input type="number" name="threshold" min="0.05" max="0.95" step="0.05" value="{{ threshold }}">
+            </div>
+
+            <div class="form-field">
+                <label>Sample Size</label>
+                <input type="number" name="sample_size" min="1" max="5000" step="1" value="{{ sample_size }}">
+            </div>
+
+            <div class="form-field">
+                <label>Random Seed</label>
+                <input type="number" name="random_state" min="1" max="9999" step="1" value="{{ random_state }}">
+            </div>
+
+            <div class="form-field">
+                <label>Template Row</label>
+                <input type="number" name="template_row_index" min="0" step="1" value="{{ template_row_index }}">
+            </div>
+        </div>
+
+        <div class="input-panel">
+            <div class="section-title">
+                <h2>Manual Traffic Input</h2>
+                <p>Chỉ cần chỉnh các field cần demo, các field còn lại giữ theo template row.</p>
+            </div>
+
+            <div class="manual-grid">
+                <div class="feature-box">
+                    <h3>Categorical</h3>
+                    <div class="feature-list">
+                        {% for col in categorical_cols %}
+                        <div class="form-field compact">
+                            <label>{{ col }}</label>
+                            <select name="{{ col }}">
+                                {% set default_value = manual_defaults.get(col, "") | string %}
+                                {% for option in categorical_options[col] %}
+                                <option value="{{ option }}" {% if option|string == default_value %}selected{% endif %}>
+                                    {{ option }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="feature-box wide">
+                    <h3>Numerical</h3>
+                    <div class="feature-list numeric-list">
+                        {% for col in numerical_cols %}
+                        <div class="form-field compact">
+                            <label>{{ col }}</label>
+                            <input
+                                type="number"
+                                step="any"
+                                name="{{ col }}"
+                                value="{{ manual_defaults.get(col, 0) }}"
+                            >
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {% if summary %}
+    <section class="panel result-panel">
+        <div class="panel-head">
+            <h2>Prediction Result</h2>
+            <span class="badge">{{ summary.model }}</span>
+        </div>
+
+        <div class="result-grid">
+            <div class="mini-card">
+                <span>Total</span>
+                <strong>{{ "{:,}".format(summary.total_records) }}</strong>
+            </div>
+
+            <div class="mini-card normal">
+                <span>Normal</span>
+                <strong>{{ "{:,}".format(summary.predicted_normal) }}</strong>
+            </div>
+
+            <div class="mini-card attack">
+                <span>Attack</span>
+                <strong>{{ "{:,}".format(summary.predicted_attack) }}</strong>
+            </div>
+
+            <div class="mini-card">
+                <span>Attack Ratio</span>
+                <strong>{{ "%.2f"|format(summary.attack_ratio) }}%</strong>
+            </div>
+
+            <div class="mini-card">
+                <span>Preprocess</span>
+                <strong>{{ "%.4f"|format(summary.preprocessing_time) }}s</strong>
+            </div>
+
+            <div class="mini-card">
+                <span>Predict</span>
+                <strong>{{ "%.4f"|format(summary.prediction_time) }}s</strong>
+            </div>
+
+            {% if summary.sample_accuracy is defined %}
+            <div class="mini-card">
+                <span>Correct</span>
+                <strong>{{ "{:,}".format(summary.correct_predictions) }}</strong>
+            </div>
+
+            <div class="mini-card">
+                <span>Accuracy</span>
+                <strong>{{ "%.2f"|format(summary.sample_accuracy) }}%</strong>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="panel visual-panel">
+        <div class="visual-grid">
+            <div class="chart-card">
+                <h3>Prediction Distribution</h3>
+                <div class="donut-wrap">
+                    <div class="donut js-donut" data-attack-percent="{{ prediction_distribution.attack_percent | round(2) }}">
+                        <div class="donut-inner">
+                            {{ "%.1f"|format(prediction_distribution.attack_percent) }}%
+                            <small>Attack</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend">
+                    <span><i class="box green"></i> Normal: {{ prediction_distribution.normal }}</span>
+                    <span><i class="box red"></i> Attack: {{ prediction_distribution.attack }}</span>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>Attack Probability Bins</h3>
+
+                {% for row in probability_bins %}
+                <div class="bar-row">
+                    <span>{{ row.label }}</span>
+                    <div class="bar-track">
+                        <div class="bar-fill js-bar-fill" data-width="{{ row.percent_width | round(2) }}"></div>
+                    </div>
+                    <strong>{{ row.count }}</strong>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if actual_vs_predicted %}
+            <div class="chart-card">
+                <h3>Actual vs Predicted</h3>
+                <table class="matrix">
+                    <thead>
+                    <tr>
+                        <th>Actual \ Pred</th>
+                        <th>Normal</th>
+                        <th>Attack</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    <tr>
+                        <th>Normal</th>
+                        <td>{{ actual_vs_predicted.normal_normal }}</td>
+                        <td>{{ actual_vs_predicted.normal_attack }}</td>
+                    </tr>
+                    <tr>
+                        <th>Attack</th>
+                        <td>{{ actual_vs_predicted.attack_normal }}</td>
+                        <td>{{ actual_vs_predicted.attack_attack }}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="panel table-panel">
+        <div class="panel-head">
+            <h2>Prediction Table</h2>
+            <span class="hint">Showing first rows only</span>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                <tr>
+                    {% for col in display_columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for row in display_table %}
+                <tr>
+                    {% for col in display_columns %}
+                    <td>{{ row[col] }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const donut = document.querySelector(".js-donut");
+
+        if (donut) {
+            const attackPercent = Number(donut.dataset.attackPercent || 0);
+            donut.style.background = `conic-gradient(#ef4444 0 ${attackPercent}%, #22c55e ${attackPercent}% 100%)`;
+        }
+
+        document.querySelectorAll(".js-bar-fill").forEach(function (bar) {
+            const width = Number(bar.dataset.width || 0);
+            bar.style.width = `${width}%`;
+        });
+    });
+</script>
+</body>
+</html>

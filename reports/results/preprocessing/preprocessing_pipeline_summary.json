@@ -1,0 +1,10 @@
+{
+    "numerical_pipeline": [
+        "SimpleImputer(strategy='median')",
+        "StandardScaler()"
+    ],
+    "categorical_pipeline": [
+        "SimpleImputer(strategy='most_frequent')",
+        "OneHotEncoder(handle_unknown='ignore')"
+    ]
+}

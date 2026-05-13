@@ -1,0 +1,18 @@
+{
+    "early_stopping": {
+        "monitor": "val_loss",
+        "patience": 6,
+        "restore_best_weights": true
+    },
+    "reduce_lr_on_plateau": {
+        "monitor": "val_loss",
+        "factor": 0.5,
+        "patience": 3,
+        "min_lr": 1e-06
+    },
+    "model_checkpoint": {
+        "monitor": "val_loss",
+        "save_best_only": true,
+        "path": "D:\\src\\bigdata\\bigdata-streaming-ids\\models\\deep_mlp\\deep_mlp_best.keras"
+    }
+}

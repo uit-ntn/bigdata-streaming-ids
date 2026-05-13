@@ -1,0 +1,6 @@
+{
+    "prediction_time_seconds": 0.022374868392944336,
+    "probability_prediction_time_seconds": 0.017499923706054688,
+    "num_test_samples": 82332,
+    "prediction_time_per_sample_ms": 0.0002717639361723793
+}

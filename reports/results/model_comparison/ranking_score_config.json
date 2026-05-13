@@ -1,0 +1,11 @@
+{
+    "score_formula": "0.35*recall_attack + 0.30*f1_attack + 0.15*precision_attack + 0.10*roc_auc + 0.10*pr_auc",
+    "weights": {
+        "recall_attack": 0.35,
+        "f1_attack": 0.3,
+        "precision_attack": 0.15,
+        "roc_auc": 0.1,
+        "pr_auc": 0.1
+    },
+    "reason": "IDS evaluation prioritizes Recall and F1-score for the Attack class because missing attacks is more risky than only maximizing overall accuracy."
+}

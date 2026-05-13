@@ -1,0 +1,55 @@
+|--- sttl <= -1.15
+|   |--- sinpkt <= -0.14
+|   |   |--- smean <= -0.41
+|   |   |   |--- class: 0
+|   |   |--- smean >  -0.41
+|   |   |   |--- dur <= -0.21
+|   |   |   |   |--- class: 1
+|   |   |   |--- dur >  -0.21
+|   |   |   |   |--- class: 1
+|   |--- sinpkt >  -0.14
+|   |   |--- class: 0
+|--- sttl >  -1.15
+|   |--- sbytes <= -0.05
+|   |   |--- smean <= -0.40
+|   |   |   |--- sloss <= -0.07
+|   |   |   |   |--- ct_srv_dst <= -0.33
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- ct_srv_dst >  -0.33
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |--- sloss >  -0.07
+|   |   |   |   |--- ackdat <= 0.58
+|   |   |   |   |   |--- class: 0
+|   |   |   |   |--- ackdat >  0.58
+|   |   |   |   |   |--- class: 1
+|   |   |--- smean >  -0.40
+|   |   |   |--- proto_icmp <= 0.50
+|   |   |   |   |--- ct_dst_sport_ltm <= -0.47
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- ct_dst_sport_ltm >  -0.47
+|   |   |   |   |   |--- class: 1
+|   |   |   |--- proto_icmp >  0.50
+|   |   |   |   |--- class: 0
+|   |--- sbytes >  -0.05
+|   |   |--- ct_srv_dst <= -0.71
+|   |   |   |--- dbytes <= -0.09
+|   |   |   |   |--- dpkts <= -0.09
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- dpkts >  -0.09
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |--- dbytes >  -0.09
+|   |   |   |   |--- ct_srv_src <= -0.36
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- ct_srv_src >  -0.36
+|   |   |   |   |   |--- truncated branch of depth 3
+|   |   |--- ct_srv_dst >  -0.71
+|   |   |   |--- ct_dst_src_ltm <= -0.57
+|   |   |   |   |--- ct_dst_src_ltm <= -0.66
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- ct_dst_src_ltm >  -0.66
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |--- ct_dst_src_ltm >  -0.57
+|   |   |   |   |--- dmean <= -0.22
+|   |   |   |   |   |--- truncated branch of depth 8
+|   |   |   |   |--- dmean >  -0.22
+|   |   |   |   |   |--- truncated branch of depth 8

@@ -1,0 +1,22 @@
+{
+    "model": "decision_tree",
+    "accuracy": 0.9167395423407666,
+    "precision_attack": 0.9013120841068858,
+    "recall_attack": 0.9531456807553164,
+    "f1_attack": 0.9265044869251965,
+    "precision_macro": 0.9197776656396377,
+    "recall_macro": 0.9126404079452257,
+    "f1_macro": 0.9152433350261969,
+    "roc_auc": 0.9719101556444824,
+    "pr_auc": 0.9662065066901896,
+    "train_time_seconds": 3.9559507369995117,
+    "prediction_time_seconds": 0.022374868392944336,
+    "tree_depth": 12,
+    "num_leaves": "424",
+    "tn": 32269,
+    "fp": 4731,
+    "fn": 2124,
+    "tp": 43208,
+    "false_positive_rate": 0.12786486486486487,
+    "false_negative_rate": 0.04685431924468367
+}

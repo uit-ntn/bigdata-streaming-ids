@@ -1,0 +1,3 @@
+predicted_label,label_name,count,ratio_percent
+0,Normal,34549,41.96302774133994
+1,Attack,47783,58.03697225866006

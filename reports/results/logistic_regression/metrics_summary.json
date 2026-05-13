@@ -1,0 +1,20 @@
+{
+    "model": "logistic_regression",
+    "accuracy": 0.8355803332847496,
+    "precision_attack": 0.8021591621842511,
+    "recall_attack": 0.9309979705285449,
+    "f1_attack": 0.8617897799785594,
+    "precision_macro": 0.8484533150670237,
+    "recall_macro": 0.8248368231021104,
+    "f1_macro": 0.8294470265620701,
+    "roc_auc": 0.955970251311048,
+    "pr_auc": 0.9665857984474486,
+    "train_time_seconds": 4.961141347885132,
+    "prediction_time_seconds": 0.006674766540527344,
+    "tn": 26591,
+    "fp": 10409,
+    "fn": 3128,
+    "tp": 42204,
+    "false_positive_rate": 0.2813243243243243,
+    "false_negative_rate": 0.06900202947145505
+}

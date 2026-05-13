@@ -1,0 +1,10 @@
+{
+    "best_model_by_weighted_score": "Decision Tree",
+    "best_model_weighted_score": 0.9405608131914196,
+    "ranking_order": [
+        "Decision Tree",
+        "Deep MLP",
+        "Logistic Regression"
+    ],
+    "selection_reason": "The selected model is ranked highest by a weighted score that prioritizes Attack Recall and Attack F1-score, which are important for IDS tasks."
+}

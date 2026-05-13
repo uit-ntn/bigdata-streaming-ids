@@ -1,0 +1,10 @@
+name,class_name,trainable,num_params
+dense_256,Dense,True,49920
+batch_norm_256,BatchNormalization,True,1024
+dropout_256,Dropout,True,0
+dense_128,Dense,True,32896
+batch_norm_128,BatchNormalization,True,512
+dropout_128,Dropout,True,0
+dense_64,Dense,True,8256
+dropout_64,Dropout,True,0
+output_attack_probability,Dense,True,65

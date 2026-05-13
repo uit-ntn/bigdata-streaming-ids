@@ -1,0 +1,22 @@
+{
+    "target_col": "label",
+    "dropped_cols": [
+        "id",
+        "attack_cat",
+        "label"
+    ],
+    "X_train_shape": [
+        175341,
+        42
+    ],
+    "X_test_shape": [
+        82332,
+        42
+    ],
+    "y_train_shape": [
+        175341
+    ],
+    "y_test_shape": [
+        82332
+    ]
+}

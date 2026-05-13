@@ -1,0 +1,13 @@
+{
+    "X_train_shape": [
+        175341,
+        194
+    ],
+    "X_test_shape": [
+        82332,
+        194
+    ],
+    "X_train_memory_mb": 129.7613296508789,
+    "X_test_memory_mb": 60.929901123046875,
+    "conversion_time_seconds": 0.09886932373046875
+}

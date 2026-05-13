@@ -1,0 +1,11 @@
+{
+    "train_time_seconds": 5.2639899253845215,
+    "n_iter": [
+        275
+    ],
+    "classes": [
+        0,
+        1
+    ],
+    "model_path": "D:\\src\\bigdata\\bigdata-streaming-ids\\models\\logistic_regression\\logistic_regression.joblib"
+}

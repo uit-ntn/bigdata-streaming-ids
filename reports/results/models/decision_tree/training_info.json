@@ -1,0 +1,10 @@
+{
+    "train_time_seconds": 3.9559507369995117,
+    "tree_depth": 12,
+    "num_leaves": "424",
+    "classes": [
+        0,
+        1
+    ],
+    "model_path": "D:\\src\\bigdata\\bigdata-streaming-ids\\models\\decision_tree\\decision_tree.joblib"
+}

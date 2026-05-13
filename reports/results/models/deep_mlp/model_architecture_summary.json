@@ -1,0 +1,56 @@
+[
+    {
+        "name": "dense_256",
+        "class_name": "Dense",
+        "trainable": true,
+        "num_params": 49920
+    },
+    {
+        "name": "batch_norm_256",
+        "class_name": "BatchNormalization",
+        "trainable": true,
+        "num_params": 1024
+    },
+    {
+        "name": "dropout_256",
+        "class_name": "Dropout",
+        "trainable": true,
+        "num_params": 0
+    },
+    {
+        "name": "dense_128",
+        "class_name": "Dense",
+        "trainable": true,
+        "num_params": 32896
+    },
+    {
+        "name": "batch_norm_128",
+        "class_name": "BatchNormalization",
+        "trainable": true,
+        "num_params": 512
+    },
+    {
+        "name": "dropout_128",
+        "class_name": "Dropout",
+        "trainable": true,
+        "num_params": 0
+    },
+    {
+        "name": "dense_64",
+        "class_name": "Dense",
+        "trainable": true,
+        "num_params": 8256
+    },
+    {
+        "name": "dropout_64",
+        "class_name": "Dropout",
+        "trainable": true,
+        "num_params": 0
+    },
+    {
+        "name": "output_attack_probability",
+        "class_name": "Dense",
+        "trainable": true,
+        "num_params": 65
+    }
+]
